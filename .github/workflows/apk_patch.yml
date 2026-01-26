@@ -45,7 +45,7 @@ jobs:
           javac -Xlint:deprecation -cp "$JAR_PATH" \
           --release 8 \
           -d out \
-          patch/FileProvider.java
+          patch/ProxyDocumentsProvider.java
 
       - name: Convert to DEX
         run: |
@@ -53,7 +53,7 @@ jobs:
           $BUILD_TOOLS_DIR/d8 --release \
                               --lib "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
                               --output ./ \
-                              out/patch/FileProvider.class
+                              out/patch/ProxyDocumentsProvider.class
           rm -rf out
 
       - name: Decompile APK
@@ -66,7 +66,7 @@ jobs:
 
       - name: Inject Provider to Manifest
         run: |
-          PROVIDER_BLOCK="<provider ${{ env.NS_PREFIX }}:name=\"patch.FileProvider\" ${{ env.NS_PREFIX }}:permission=\"android.permission.MANAGE_DOCUMENTS\" ${{ env.NS_PREFIX }}:exported=\"true\" ${{ env.NS_PREFIX }}:authorities=\"${{ env.PKG_NAME }}.patch.FileProvider\" ${{ env.NS_PREFIX }}:grantUriPermissions=\"true\"><intent-filter><action ${{ env.NS_PREFIX }}:name=\"android.content.action.DOCUMENTS_PROVIDER\" /></intent-filter></provider>"
+          PROVIDER_BLOCK="<provider ${{ env.NS_PREFIX }}:name=\"patch.ProxyDocumentsProvider\" ${{ env.NS_PREFIX }}:permission=\"android.permission.MANAGE_DOCUMENTS\" ${{ env.NS_PREFIX }}:exported=\"true\" ${{ env.NS_PREFIX }}:authorities=\"${{ env.PKG_NAME }}.ProxyDocumentsProvider\" ${{ env.NS_PREFIX }}:grantUriPermissions=\"true\"><intent-filter><action ${{ env.NS_PREFIX }}:name=\"android.content.action.DOCUMENTS_PROVIDER\" /></intent-filter></provider>"
           sed -i "/<\/application>/i $PROVIDER_BLOCK" decompiled_source/AndroidManifest.xml
 
       - name: Build Modified Manifest
