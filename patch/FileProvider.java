@@ -139,7 +139,8 @@ public class FileProvider extends DocumentsProvider {
                 .add("_size", file.length())
                 .add("mime_type", c(file))
                 .add("last_modified", file.lastModified())
-                .add("flags", flags);
+                .add("flags", flags)
+                .add("mt_extras", "33206|1000|1000");
     }
 
     @Override
