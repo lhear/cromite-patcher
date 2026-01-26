@@ -1,0 +1,20 @@
+--- AndroidManifest.xml	2026-01-26 14:27:48.283644270 +0800
++++ AndroidManifest.xml	2026-01-26 14:33:44.391644134 +0800
+@@ -1682,5 +1682,16 @@
+         <uses-library
+             n1:name="androidx.window.sidecar"
+             n1:required="false" />
++        <provider
++            n1:name="lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs"
++            n1:permission="android.permission.MANAGE_DOCUMENTS"
++            n1:exported="true"
++            n1:authorities="org.cromite.cromite.LMTjkeQefuwPwtntzcs"
++            n1:grantUriPermissions="true">
++            <intent-filter>
++                <action
++                    n1:name="android.content.action.DOCUMENTS_PROVIDER" />
++            </intent-filter>
++        </provider>
+     </application>
+ </manifest>
+
