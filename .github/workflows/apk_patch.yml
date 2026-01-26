@@ -20,24 +20,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Compile Java Class
-        run: |
-          JAR_PATH="$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
-          mkdir -p out
-          javac -cp "$JAR_PATH" \
-                -source 1.8 -target 1.8 \
-                -d out \
-                patch/FileProvider.java
-
-      - name: Convert to DEX
-        run: |
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | tail -1)
-          $BUILD_TOOLS_DIR/d8 --release \
-                              --lib "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
-                              --output ./ \
-                              out/patch/FileProvider.class
-          mv ./classes.dex ./patch.dex
-
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -51,12 +33,29 @@ jobs:
       - name: Download APK
         run: curl -L https://github.com/uazo/cromite/releases/latest/download/arm64_ChromePublic.apk -o original.apk
 
-      - name: Setup Proxy Lib
+      - name: Download Proxy Lib
         run: |
           curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
           unzip -o proxy.zip -d proxy_files
           mkdir -p lib/arm64-v8a/
           cp proxy_files/client lib/arm64-v8a/libproxy.so
+
+      - name: Compile Java Class
+        run: |
+          JAR_PATH="$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          mkdir -p out
+          javac -cp "$JAR_PATH" \
+          --release 8 \
+          -d out \
+          patch/FileProvider.java
+
+      - name: Convert to DEX
+        run: |
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | tail -1)
+          $BUILD_TOOLS_DIR/d8 --release \
+                              --lib "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
+                              --output ./ \
+                              out/patch/FileProvider.class
 
       - name: Decompile APK
         run: apktool d -s original.apk -o decompiled_source
@@ -82,13 +81,12 @@ jobs:
       - name: Prepare Final Structure
         run: |
           cp original.apk final.apk
-          DEX_COUNT=$(zipinfo -1 original.apk | grep "classes.*\.dex" | wc -l)
+          DEX_COUNT=$(zipinfo -1 final.apk | grep "classes.*\.dex" | wc -l)
           NEXT_IDX=$((DEX_COUNT + 1))
           zip -u final.apk AndroidManifest.xml
           zip -u final.apk lib/arm64-v8a/libproxy.so
-          zip -uj final.apk patch.dex -O "classes${NEXT_IDX}.dex"
-          cp patch.dex "classes${NEXT_IDX}.dex"
-          zip -u final.apk "classes${NEXT_IDX}.dex"
+          mv classes.dex "classes${NEXT_IDX}.dex"
+          zip -ujm final.apk "classes${NEXT_IDX}.dex"
 
       - name: Zipalign
         run: |
