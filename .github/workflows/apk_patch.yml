@@ -36,7 +36,7 @@ jobs:
           unzip -o proxy.zip -d proxy_files
           mkdir -p lib/arm64-v8a/
           cp proxy_files/client lib/arm64-v8a/libproxy.so
-          rm -rf proxy_files
+          rm -rf proxy_files proxy.zip
 
       - name: Compile Java Class
         run: |
@@ -54,6 +54,7 @@ jobs:
                               --lib "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
                               --output ./ \
                               out/patch/FileProvider.class
+          rm -rf out
 
       - name: Decompile APK
         run: apktool d -s original.apk -o decompiled_source
@@ -78,10 +79,13 @@ jobs:
 
       - name: Prepare Final Structure
         run: |
-          mkdir tmp
-          unzip -o original.apk AndroidManifest.xml -d tmp
-          touch -r tmp/AndroidManifest.xml time_ref
-          rm -rf tmp
+          mkdir -p temp
+          echo 1
+          unzip -o original.apk AndroidManifest.xml -d temp
+          echo 2
+          touch -r temp/AndroidManifest.xml time_ref
+          echo 3
+          rm -rf temp
           DEX_COUNT=$(zipinfo -1 original.apk | grep "classes.*\.dex" | wc -l)
           NEXT_IDX=$((DEX_COUNT + 1))
           mv classes.dex "classes${NEXT_IDX}.dex"
