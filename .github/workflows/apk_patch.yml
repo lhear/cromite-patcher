@@ -1,4 +1,4 @@
-name: Cromite Patch and Build
+name: APK Patch and Build
 
 on:
   workflow_dispatch:
@@ -32,13 +32,28 @@ jobs:
       - name: Decompile APK
         run: apktool d -s original.apk -o decompiled_source
 
-      - name: Apply Patch
+      - name: Get Manifest Info
         run: |
-          patch decompiled_source/AndroidManifest.xml AndroidManifest.xml.patch
+          echo "PKG_NAME=$(grep -oP 'package="\K[^"]+' AndroidManifest.xml)" >> $GITHUB_ENV
+          echo "NS_PREFIX=$(grep -oP '\K[a-zA-Z0-9]+(?=:name)' AndroidManifest.xml | head -n 1)" >> $GITHUB_ENV
+
+      - name: Inject Provider to Manifest
+        run: |
+          PROVIDER_BLOCK="<provider ${{ env.NS_PREFIX }}:name=\"lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs\" ${{ env.NS_PREFIX }}:permission=\"android.permission.MANAGE_DOCUMENTS\" ${{ env.NS_PREFIX }}:exported=\"true\" ${{ env.NS_PREFIX }}:authorities=\"${{ env.PKG_NAME }}.LMTjkeQefuwPwtntzcs\" ${{ env.NS_PREFIX }}:grantUriPermissions=\"true\"><intent-filter><action ${{ env.NS_PREFIX }}:name=\"android.content.action.DOCUMENTS_PROVIDER\" /></intent-filter></provider>"
+          sed -i "/<\/application>/i $PROVIDER_BLOCK" AndroidManifest.xml
+
+      - name: Setup Proxy Lib
+        run: |
           curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
-          unzip proxy.zip -d proxy
+          unzip -o proxy.zip -d proxy
+          mkdir -p decompiled_source/lib/arm64-v8a/
           cp proxy/client decompiled_source/lib/arm64-v8a/libproxy.so
-          cp classes2.dex decompiled_source/classes2.dex
+
+      - name: Increment and Copy DEX
+        run: |
+          EXISTING_MAX=$(ls decompiled_source/classes*.dex | grep -oP '\d+' | sort -rn | head -n 1 || echo 1)
+          NEXT_IDX=$((EXISTING_MAX + 1))
+          cp classes.dex "decompiled_source/classes${NEXT_IDX}.dex"
 
       - name: Rebuild APK
         run: apktool b decompiled_source -o unsigned.apk
