@@ -72,7 +72,9 @@ public class ProxyDocumentsProvider extends DocumentsProvider {
         MatrixCursor c = new MatrixCursor(proj != null ? proj : ROOT_PROJECTION);
         ApplicationInfo ai = getContext().getApplicationInfo();
         c.newRow().add("root_id", rootId).add("document_id", rootId)
-                .add("title", ai.loadLabel(getContext().getPackageManager())).add("flags", 1).add("mime_types", "*/*");
+                .add("summary", this.rootId).add("icon", appInfo.icon)
+                .add("title", ai.loadLabel(getContext().getPackageManager()))
+                .add("flags", 17).add("mime_types", "*/*");
         return c;
     }
 
