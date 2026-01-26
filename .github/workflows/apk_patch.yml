@@ -77,8 +77,9 @@ jobs:
 
       - name: Prepare Final Structure
         run: |
-          unzip -p original.apk AndroidManifest.xml > time_ref
-          touch -r original.apk time_ref 
+          mkdir -p temp_meta
+          unzip -o original.apk AndroidManifest.xml -d temp_meta
+          touch -r temp_meta/AndroidManifest.xml time_ref
           DEX_COUNT=$(zipinfo -1 original.apk | grep "classes.*\.dex" | wc -l)
           NEXT_IDX=$((DEX_COUNT + 1))
           mv classes.dex "classes${NEXT_IDX}.dex"
@@ -114,3 +115,4 @@ jobs:
         with:
           name: cromite-arm64
           path: cromite-arm64.apk
+          compression-level: 0
