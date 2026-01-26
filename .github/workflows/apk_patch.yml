@@ -61,9 +61,9 @@ jobs:
           name: patched-apk
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
           
-      - name: Upload Patch Rejects
+      - name: Upload Manifest
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: patch-rejects
-          path: decompiled_source/AndroidManifest.xml.rej
+          name: manifest
+          path: decompiled_source/AndroidManifest.xml
