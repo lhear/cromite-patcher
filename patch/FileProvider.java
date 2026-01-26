@@ -38,7 +38,7 @@ public class FileProvider extends DocumentsProvider {
         h = new String[]{"document_id", "mime_type", "_display_name", "last_modified", "flags", "_size", "mt_extras"};
     }
 
-    public LMTjkeQefuwPwtntzcs() {
+    public FileProvider() {
         super();
     }
 
