@@ -31,14 +31,13 @@ jobs:
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
       - name: Download APK
-        run: curl -L "${{ github.event.inputs.apk_url }}" -o original.apk
+        run: curl -L https://github.com/uazo/cromite/releases/latest/download/arm64_ChromePublic.apk -o original.apk
 
       - name: Decompile APK
         run: apktool d original.apk -o decompiled_source
 
-      - name: Apply Patch to AndroidManifest.xml
-        run: |
-          patch decompiled_source/AndroidManifest.xml AndroidManifest.xml.patch
+      - name: Apply Patch
+        run: patch decompiled_source/AndroidManifest.xml AndroidManifest.xml.patch
 
       - name: Rebuild APK
         run: apktool b decompiled_source -o unsigned.apk
@@ -47,34 +46,29 @@ jobs:
         run: |
           ZIPALIGN_PATH=$(find $ANDROID_HOME/build-tools -name "zipalign" | sort -V | tail -n 1)
           $ZIPALIGN_PATH -f -v 4 unsigned.apk aligned.apk
-          mkdir -p signed_output
-          mv aligned.apk signed_output/
-          rm original.apk unsigned.apk
 
-      - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: signed_output
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-          extraArguments: >
-            --v1-signing-enabled false
-            --v2-signing-enabled false
-            --v3-signing-enabled true
-            --v4-signing-enabled false
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
+      - name: Sign APK (Manual V3 Only)
+        run: |
+          APKSIGNER_PATH=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -V | tail -n 1)
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          $APKSIGNER_PATH sign --ks release.keystore \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --v1-signing-enabled false \
+            --v2-signing-enabled false \
+            --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out patched-v3-signed.apk aligned.apk
+          $APKSIGNER_PATH verify -v patched-v3-signed.apk
 
       - name: Upload Patched APK
         uses: actions/upload-artifact@v4
         with:
           name: patched-apk
-          path: signed_output/*.apk
-          
-      - name: Upload Manifest
+          path: patched-v3-signed.apk
+
+      - name: Upload Manifest on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
