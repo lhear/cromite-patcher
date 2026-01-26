@@ -53,7 +53,7 @@ jobs:
         run: |
           EXISTING_MAX=$(ls decompiled_source/classes*.dex | grep -oP '\d+' | sort -rn | head -n 1 || echo 1)
           NEXT_IDX=$((EXISTING_MAX + 1))
-          cp classes.dex "decompiled_source/classes${NEXT_IDX}.dex"
+          cp patch.dex "decompiled_source/classes${NEXT_IDX}.dex"
 
       - name: Rebuild APK
         run: apktool b decompiled_source -o unsigned.apk
