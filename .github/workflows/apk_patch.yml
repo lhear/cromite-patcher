@@ -1,0 +1,62 @@
+name: APK Patch and Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'APK Download URL'
+        required: true
+
+jobs:
+  patch-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patch
+          mkdir -p bin
+          curl -L https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -o bin/apktool
+          curl -L https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.12.1.jar -o bin/apktool.jar
+          chmod +x bin/apktool bin/apktool.jar
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+
+      - name: Download APK
+        run: curl -L "${{ github.event.inputs.apk_url }}" -o original.apk
+
+      - name: Decompile APK
+        run: apktool d original.apk -o decompiled_source
+
+      - name: Apply Patch to AndroidManifest.xml
+        run: |
+          patch decompiled_source/AndroidManifest.xml AndroidManifest.xml.patch
+
+      - name: Rebuild APK
+        run: apktool b decompiled_source -o unsigned.apk
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: .
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      - name: Upload Patched APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-apk
+          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
