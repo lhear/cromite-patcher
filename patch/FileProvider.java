@@ -1,4 +1,3 @@
-
 package patch;
 
 import android.content.Context;
@@ -11,32 +10,35 @@ import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsProvider;
-import android.system.Os;
 import android.webkit.MimeTypeMap;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
-public class FileProvider extends DocumentsProvider {
-    public static final String[] DEFAULT_ROOT_PROJECTION = new String[]{"root_id", "document_id", "summary", "flags", "title", "mime_types", "icon"};
-    public static final String[] DEFAULT_DOCUMENT_PROJECTION = new String[]{"document_id", "_display_name", "_size", "mime_type", "last_modified", "flags"};
+public class ProxyDocumentsProvider extends DocumentsProvider {
+    private static final String[] ROOT_PROJECTION = new String[]{
+        "root_id", "document_id", "summary", "flags", "title", "mime_types", "icon"
+    };
+    private static final String[] DOCUMENT_PROJECTION = new String[]{
+        "document_id", "_display_name", "_size", "mime_type", "last_modified", "flags"
+    };
     
-    public String b;
-    public File c;
+    private String rootDocumentId;
+    private File baseDirectory;
 
-    public static boolean a(File file) {
+    private boolean deleteRecursive(File file) {
         if (file.isDirectory()) {
-            File[] listFiles = file.listFiles();
-            if (listFiles != null) {
-                for (File child : listFiles) {
-                    if (!a(child)) return false;
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    if (!deleteRecursive(child)) return false;
                 }
             }
         }
         return file.delete();
     }
 
-    public static String c(File file) {
+    private String getMimeType(File file) {
         if (file.isDirectory()) return "vnd.android.document/directory";
         String name = file.getName();
         int lastDot = name.lastIndexOf('.');
@@ -49,77 +51,52 @@ public class FileProvider extends DocumentsProvider {
     }
 
     @Override
-    public final void attachInfo(Context context, ProviderInfo providerInfo) {
-        this.b = context.getPackageName();
-        this.c = new File(context.getFilesDir(), "proxy");
-        if (!this.c.exists()) {
-            this.c.mkdirs();
+    public final void attachInfo(Context context, ProviderInfo info) {
+        this.rootDocumentId = context.getPackageName();
+        this.baseDirectory = new File(context.getFilesDir(), "proxy");
+        if (!this.baseDirectory.exists()) {
+            this.baseDirectory.mkdirs();
         }
         try {
-            String libPath = context.getApplicationInfo().nativeLibraryDir.concat("/libproxy.so");
-            String[] cmd = {libPath, "-c", "config.toml"};
-            Runtime.getRuntime().exec(cmd, null, this.c);
+            String libraryPath = context.getApplicationInfo().nativeLibraryDir.concat("/libproxy.so");
+            String[] command = {libraryPath, "-c", "config.toml"};
+            Runtime.getRuntime().exec(command, null, this.baseDirectory);
         } catch (Exception ignored) {}
-        super.attachInfo(context, providerInfo);
+        super.attachInfo(context, info);
     }
 
-    public final File b(String docId, boolean checkExists) throws FileNotFoundException {
+    private File getFileForDocId(String docId, boolean mustExist) throws FileNotFoundException {
         File target;
-        if (docId.equals(this.b)) {
-            target = this.c;
+        if (docId.equals(this.rootDocumentId)) {
+            target = this.baseDirectory;
         } else {
-            int index = docId.indexOf('/');
-            String path = (index == -1) ? docId : docId.substring(index + 1);
-            target = new File(this.c, path);
+            int slashIndex = docId.indexOf('/');
+            String relativePath = (slashIndex == -1) ? docId : docId.substring(slashIndex + 1);
+            target = new File(this.baseDirectory, relativePath);
         }
 
-        if (checkExists && !target.exists()) {
+        if (mustExist && !target.exists()) {
             throw new FileNotFoundException(docId + " not found");
         }
         return target;
     }
 
     @Override
-    public final Bundle call(String method, String arg, Bundle extras) {
-        Bundle result = super.call(method, arg, extras);
-        if (result != null || method == null || !method.startsWith("mt:")) return result;
-
-        result = new Bundle();
-        try {
-            String docId = ((Uri) extras.getParcelable("uri")).getLastPathSegment();
-            File file = b(docId, true);
-
-            if ("mt:setLastModified".equals(method)) {
-                result.putBoolean("result", file.setLastModified(extras.getLong("time")));
-            } else if ("mt:setPermissions".equals(method)) {
-                Os.chmod(file.getPath(), extras.getInt("permissions"));
-                result.putBoolean("result", true);
-            } else {
-                result.putBoolean("result", false);
-                result.putString("message", "Unsupported method: " + method);
-            }
-        } catch (Exception e) {
-            result.putBoolean("result", false);
-            result.putString("message", e.toString());
-        }
-        return result;
-    }
-
-    @Override
     public final String createDocument(String parentId, String mimeType, String displayName) throws FileNotFoundException {
-        File parent = b(parentId, true);
+        File parent = getFileForDocId(parentId, true);
         File file = new File(parent, displayName);
         try {
-            if ("vnd.android.document/directory".equals(mimeType) ? file.mkdir() : file.createNewFile()) {
+            boolean success = "vnd.android.document/directory".equals(mimeType) ? file.mkdir() : file.createNewFile();
+            if (success) {
                 return parentId + (parentId.endsWith("/") ? "" : "/") + file.getName();
             }
         } catch (IOException ignored) {}
-        throw new FileNotFoundException("Create failed");
+        throw new FileNotFoundException("Failed to create document");
     }
 
-    public final void d(MatrixCursor cursor, String docId, File file) {
+    private void includeFile(MatrixCursor cursor, String docId, File file) {
         if (file == null) {
-            try { file = b(docId, true); } catch (Exception e) { return; }
+            try { file = getFileForDocId(docId, true); } catch (Exception e) { return; }
         }
 
         int flags = 0;
@@ -131,24 +108,26 @@ public class FileProvider extends DocumentsProvider {
             flags |= 68;
         }
 
-        String name = file.getPath().equals(this.c.getPath()) ? "proxy" : file.getName();
+        String displayName = file.getPath().equals(this.baseDirectory.getPath()) ? "proxy" : file.getName();
         cursor.newRow()
                 .add("document_id", docId)
-                .add("_display_name", name)
+                .add("_display_name", displayName)
                 .add("_size", file.length())
-                .add("mime_type", c(file))
+                .add("mime_type", getMimeType(file))
                 .add("last_modified", file.lastModified())
                 .add("flags", flags);
     }
 
     @Override
     public final void deleteDocument(String docId) throws FileNotFoundException {
-        if (!a(b(docId, true))) throw new FileNotFoundException("Delete failed");
+        if (!deleteRecursive(getFileForDocId(docId, true))) {
+            throw new FileNotFoundException("Failed to delete document");
+        }
     }
 
     @Override
     public final String getDocumentType(String docId) throws FileNotFoundException {
-        return c(b(docId, true));
+        return getMimeType(getFileForDocId(docId, true));
     }
 
     @Override
@@ -158,14 +137,14 @@ public class FileProvider extends DocumentsProvider {
 
     @Override
     public final String moveDocument(String sourceId, String sourceParentId, String targetParentId) throws FileNotFoundException {
-        File source = b(sourceId, true);
-        File targetDir = b(targetParentId, true);
-        File target = new File(targetDir, source.getName());
+        File sourceFile = getFileForDocId(sourceId, true);
+        File targetDir = getFileForDocId(targetParentId, true);
+        File targetFile = new File(targetDir, sourceFile.getName());
 
-        if (!target.exists() && source.renameTo(target)) {
-            return targetParentId + (targetParentId.endsWith("/") ? "" : "/") + target.getName();
+        if (!targetFile.exists() && sourceFile.renameTo(targetFile)) {
+            return targetParentId + (targetParentId.endsWith("/") ? "" : "/") + targetFile.getName();
         }
-        throw new FileNotFoundException("Move failed");
+        throw new FileNotFoundException("Failed to move document");
     }
 
     @Override
@@ -173,17 +152,18 @@ public class FileProvider extends DocumentsProvider {
 
     @Override
     public final ParcelFileDescriptor openDocument(String docId, String mode, CancellationSignal signal) throws FileNotFoundException {
-        return ParcelFileDescriptor.open(b(docId, true), ParcelFileDescriptor.parseMode(mode));
+        return ParcelFileDescriptor.open(getFileForDocId(docId, true), ParcelFileDescriptor.parseMode(mode));
     }
 
     @Override
     public final Cursor queryChildDocuments(String parentId, String[] projection, String sortOrder) throws FileNotFoundException {
-        MatrixCursor cursor = new MatrixCursor(projection != null ? projection : DEFAULT_DOCUMENT_PROJECTION);
-        File parent = b(parentId, true);
-        File[] files = parent.listFiles();
-        if (files != null) {
-            for (File f : files) {
-                d(cursor, parentId + (parentId.endsWith("/") ? "" : "/") + f.getName(), f);
+        MatrixCursor cursor = new MatrixCursor(projection != null ? projection : DOCUMENT_PROJECTION);
+        File parent = getFileForDocId(parentId, true);
+        File[] children = parent.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                String childDocId = parentId + (parentId.endsWith("/") ? "" : "/") + child.getName();
+                includeFile(cursor, childDocId, child);
             }
         }
         return cursor;
@@ -191,23 +171,23 @@ public class FileProvider extends DocumentsProvider {
 
     @Override
     public final Cursor queryDocument(String docId, String[] projection) throws FileNotFoundException {
-        MatrixCursor cursor = new MatrixCursor(projection != null ? projection : DEFAULT_DOCUMENT_PROJECTION);
-        d(cursor, docId, null);
+        MatrixCursor cursor = new MatrixCursor(projection != null ? projection : DOCUMENT_PROJECTION);
+        includeFile(cursor, docId, null);
         return cursor;
     }
 
     @Override
     public final Cursor queryRoots(String[] projection) {
-        MatrixCursor cursor = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
-        ApplicationInfo ai = getContext().getApplicationInfo();
+        MatrixCursor cursor = new MatrixCursor(projection != null ? projection : ROOT_PROJECTION);
+        ApplicationInfo appInfo = getContext().getApplicationInfo();
         cursor.newRow()
-                .add("root_id", this.b)
-                .add("document_id", this.b)
-                .add("summary", this.b)
+                .add("root_id", this.rootDocumentId)
+                .add("document_id", this.rootDocumentId)
+                .add("summary", this.rootDocumentId)
                 .add("flags", 17)
-                .add("title", ai.loadLabel(getContext().getPackageManager()).toString())
+                .add("title", appInfo.loadLabel(getContext().getPackageManager()).toString())
                 .add("mime_types", "*/*")
-                .add("icon", ai.icon);
+                .add("icon", appInfo.icon);
         return cursor;
     }
 
@@ -218,11 +198,12 @@ public class FileProvider extends DocumentsProvider {
 
     @Override
     public final String renameDocument(String docId, String displayName) throws FileNotFoundException {
-        File file = b(docId, true);
-        if (file.renameTo(new File(file.getParentFile(), displayName))) {
+        File file = getFileForDocId(docId, true);
+        File renamedFile = new File(file.getParentFile(), displayName);
+        if (file.renameTo(renamedFile)) {
             int lastSlash = docId.lastIndexOf('/');
             return (lastSlash == -1) ? displayName : docId.substring(0, lastSlash + 1) + displayName;
         }
-        throw new FileNotFoundException("Rename failed");
+        throw new FileNotFoundException("Failed to rename document");
     }
 }
