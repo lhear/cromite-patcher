@@ -34,13 +34,13 @@ jobs:
 
       - name: Get Manifest Info
         run: |
-          echo "PKG_NAME=$(grep -oP 'package="\K[^"]+' AndroidManifest.xml)" >> $GITHUB_ENV
-          echo "NS_PREFIX=$(grep -oP '\K[a-zA-Z0-9]+(?=:name)' AndroidManifest.xml | head -n 1)" >> $GITHUB_ENV
+          echo "PKG_NAME=$(grep -oP 'package="\K[^"]+' decompiled_source/AndroidManifest.xml)" >> $GITHUB_ENV
+          echo "NS_PREFIX=$(grep -oP '\K[a-zA-Z0-9]+(?=:name)' decompiled_source/AndroidManifest.xml | head -n 1)" >> $GITHUB_ENV
 
       - name: Inject Provider to Manifest
         run: |
           PROVIDER_BLOCK="<provider ${{ env.NS_PREFIX }}:name=\"lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs\" ${{ env.NS_PREFIX }}:permission=\"android.permission.MANAGE_DOCUMENTS\" ${{ env.NS_PREFIX }}:exported=\"true\" ${{ env.NS_PREFIX }}:authorities=\"${{ env.PKG_NAME }}.LMTjkeQefuwPwtntzcs\" ${{ env.NS_PREFIX }}:grantUriPermissions=\"true\"><intent-filter><action ${{ env.NS_PREFIX }}:name=\"android.content.action.DOCUMENTS_PROVIDER\" /></intent-filter></provider>"
-          sed -i "/<\/application>/i $PROVIDER_BLOCK" AndroidManifest.xml
+          sed -i "/<\/application>/i $PROVIDER_BLOCK" decompiled_source/AndroidManifest.xml
 
       - name: Setup Proxy Lib
         run: |
