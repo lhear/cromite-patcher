@@ -1,4 +1,4 @@
-name: APK Patch and Build
+name: APK Patch and Build (Modern Method)
 
 on:
   workflow_dispatch:
@@ -19,67 +19,73 @@ jobs:
       - name: Download Tools and APK
         run: |
           mkdir -p bin
-          curl -L https://github.com/WindySha/ManifestEditor/releases/download/v2.0/ManifestEditor-2.0.jar -o bin/manifest-editor.jar
+          # 下载 APKEditor (目前维护最活跃的二进制修改工具)
+          curl -L https://github.com/REAndroid/APKEditor/releases/download/V1.4.1/APKEditor-1.4.1.jar -o bin/APKEditor.jar
+          # 下载目标 APK
           curl -L https://github.com/uazo/cromite/releases/latest/download/arm64_ChromePublic.apk -o original.apk
+          # 下载 SO 库
           curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
           unzip -j proxy.zip client -d . && mv client libproxy.so
 
-      - name: Modify AndroidManifest.xml
+      - name: Modify Manifest and Patch
         run: |
-          unzip original.apk AndroidManifest.xml -d .
-          AAPT2_PATH=$(find $ANDROID_HOME/build-tools -name "aapt2" | sort -V | tail -n 1)
-          PKG_NAME=$($AAPT2_PATH dump packagename original.apk)
-          echo "Detected Package: $PKG_NAME"
-          java -jar bin/manifest-editor.jar \
-            --input AndroidManifest.xml \
-            --output AndroidManifest_mod1.xml \
-            --add-tag "provider" \
-            --where "application" \
-            --attribute "name" "lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs" \
-            --attribute "authorities" "$PKG_NAME.LMTjkeQefuwPwtntzcs" \
-            --attribute "exported" "true" \
-            --attribute "permission" "android.permission.MANAGE_DOCUMENTS" \
-            --attribute "grantUriPermissions" "true"
-          java -jar bin/manifest-editor.jar \
-            --input AndroidManifest_mod1.xml \
-            --output AndroidManifest_mod2.xml \
-            --add-tag "intent-filter" \
-            --where "provider[name='lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs']"
-          java -jar bin/manifest-editor.jar \
-            --input AndroidManifest_mod2.xml \
-            --output AndroidManifest_final.xml \
-            --add-tag "action" \
-            --where "provider[name='lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs']/intent-filter" \
-            --attribute "name" "android.content.action.DOCUMENTS_PROVIDER"
+          # 1. 获取包名
+          AAPT2=$(find $ANDROID_HOME/build-tools -name "aapt2" | sort -V | tail -n 1)
+          PKG_NAME=$($AAPT2 dump packagename original.apk)
+          
+          # 2. 准备修改脚本 (APKEditor 支持使用 XML 格式的修改指令)
+          cat <<EOF > editor_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <root>
+              <item type="add" tag="provider" where="application">
+                  <attribute name="android:name">lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs</attribute>
+                  <attribute name="android:authorities">${PKG_NAME}.LMTjkeQefuwPwtntzcs</attribute>
+                  <attribute name="android:exported">true</attribute>
+                  <attribute name="android:permission">android.permission.MANAGE_DOCUMENTS</attribute>
+                  <attribute name="android:grantUriPermissions">true</attribute>
+                  <child tag="intent-filter">
+                      <child tag="action">
+                          <attribute name="android:name">android.content.action.DOCUMENTS_PROVIDER</attribute>
+                      </child>
+                  </child>
+              </item>
+          </root>
+          EOF
 
-      - name: Build Patched APK
+          # 3. 使用 APKEditor 修改 Manifest (二进制直接操作)
+          java -jar bin/APKEditor.jar m -i original.apk -o modified.apk -c editor_config.xml
+
+      - name: Inject Files (SO and DEX)
         run: |
-          cp original.apk patched.apk
-          mv AndroidManifest_final.xml AndroidManifest.xml
-          zip -g patched.apk AndroidManifest.xml
+          # 使用 zip 增量注入，避免重构 APK
           mkdir -p lib/arm64-v8a/
           cp libproxy.so lib/arm64-v8a/
-          zip -g patched.apk lib/arm64-v8a/libproxy.so
+          zip -g modified.apk lib/arm64-v8a/libproxy.so
+          
           DEX_COUNT=$(unzip -l original.apk | grep "classes.*.dex" | wc -l)
           NEXT_IDX=$((DEX_COUNT + 1))
-          cp patch.dex "classes${NEXT_IDX}.dex"
-          zip -g patched.apk "classes${NEXT_IDX}.dex"
+          if [ -f "patch.dex" ]; then
+            cp patch.dex "classes${NEXT_IDX}.dex"
+            zip -g modified.apk "classes${NEXT_IDX}.dex"
+          fi
 
       - name: Zipalign and Sign
         run: |
           ZIPALIGN=$(find $ANDROID_HOME/build-tools -name "zipalign" | sort -V | tail -n 1)
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -V | tail -n 1)
-          $ZIPALIGN -f -v 4 patched.apk aligned.apk
+          
+          $ZIPALIGN -f -v 4 modified.apk aligned.apk
+          
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
           $APKSIGNER sign --ks release.keystore \
             --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
             --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
             --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
             --v3-signing-enabled true \
-            --out cromite-patched-arm64.apk aligned.apk
+            --out cromite-final.apk aligned.apk
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: patched-chrome
-          path: cromite-patched-arm64.apk
+          name: patched-apk
+          path: cromite-final.apk
