@@ -34,7 +34,7 @@ jobs:
         run: curl -L "${{ github.event.inputs.apk_url }}" -o original.apk
 
       - name: Decompile APK
-        run: apktool d original.apk -o decompiled_source
+        run: apktool d -r original.apk -o decompiled_source
 
       - name: Apply Patch to AndroidManifest.xml
         run: |
