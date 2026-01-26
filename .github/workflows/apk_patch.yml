@@ -1,5 +1,7 @@
 name: APK Patch and Build
 on:
+  push:
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
@@ -17,69 +19,63 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y patch
           mkdir -p bin
-          curl -L https://github.com/WindySha/ManifestEditor/releases/download/v2.0/ManifestEditor-2.0.jar -o bin/ManifestEditor.jar
+          curl -L https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -o bin/apktool
+          curl -L https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.12.1.jar -o bin/apktool.jar
+          chmod +x bin/apktool bin/apktool.jar
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
       - name: Download APK
         run: curl -L https://github.com/uazo/cromite/releases/latest/download/arm64_ChromePublic.apk -o original.apk
 
-      - name: Extract Package Name
+      - name: Decompile APK
+        run: apktool d -s original.apk -o decompiled_source
+
+      - name: Get Manifest Info
         run: |
-          PKG_NAME=$($ANDROID_HOME/build-tools/34.0.0/aapt dump badging original.apk | grep -oP "package: name='\K[^']+")
-          echo "PKG_NAME=$PKG_NAME" >> $GITHUB_ENV
+          echo "PKG_NAME=$(grep -oP 'package="\K[^"]+' decompiled_source/AndroidManifest.xml)" >> $GITHUB_ENV
+          echo "NS_PREFIX=$(grep -oP '\K[a-zA-Z0-9]+(?=:name)' decompiled_source/AndroidManifest.xml | head -n 1)" >> $GITHUB_ENV
 
-      - name: Modify Manifest with ManifestEditor
+      - name: Inject Provider to Manifest
         run: |
-          # 1. 注入 Provider 标签
-          java -jar bin/ManifestEditor.jar original.apk -out step1.apk \
-          --add-tag provider \
-          --attr name=lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs \
-          --attr permission=android.permission.MANAGE_DOCUMENTS \
-          --attr exported=true \
-          --attr authorities=${{ env.PKG_NAME }}.LMTjkeQefuwPwtntzcs \
-          --attr grantUriPermissions=true \
-          --parent application
+          PROVIDER_BLOCK="<provider ${{ env.NS_PREFIX }}:name=\"lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs\" ${{ env.NS_PREFIX }}:permission=\"android.permission.MANAGE_DOCUMENTS\" ${{ env.NS_PREFIX }}:exported=\"true\" ${{ env.NS_PREFIX }}:authorities=\"${{ env.PKG_NAME }}.LMTjkeQefuwPwtntzcs\" ${{ env.NS_PREFIX }}:grantUriPermissions=\"true\"><intent-filter><action ${{ env.NS_PREFIX }}:name=\"android.content.action.DOCUMENTS_PROVIDER\" /></intent-filter></provider>"
+          sed -i "/<\/application>/i $PROVIDER_BLOCK" decompiled_source/AndroidManifest.xml
 
-          # 2. 在 Provider 内部注入 intent-filter
-          java -jar bin/ManifestEditor.jar step1.apk -out step2.apk \
-          --add-tag intent-filter \
-          --parent provider \
-          --where name=lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs
+      - name: Build Modified Manifest
+        run: apktool b decompiled_source -o modified_temp.apk
 
-          # 3. 在 intent-filter 内部注入 action
-          java -jar bin/ManifestEditor.jar step2.apk -out modified_manifest.apk \
-          --add-tag action \
-          --attr name=android.content.action.DOCUMENTS_PROVIDER \
-          --parent intent-filter \
-          --where-parent provider \
-          --where name=lck.qb.qipf.vkeszwc.LMTjkeQefuwPwtntzcs
-
-      - name: Verify Manifest
+      - name: Extract Manifest and Cleanup
         run: |
-          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging modified_manifest.apk | grep sdkVersion
+          unzip -p modified_temp.apk AndroidManifest.xml > AndroidManifest.xml
+          rm -rf decompiled_source modified_temp.apk
 
-      - name: Inject Files into APK
+      - name: Setup Proxy Lib
         run: |
-          # 处理 Proxy Lib
           curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
-          unzip -j proxy.zip "client" -d tmp_lib
-          mv tmp_lib/client tmp_lib/libproxy.so
-          
-          # 计算并重命名 DEX (patch.dex 需存在于仓库根目录)
-          DEX_COUNT=$(zipinfo -1 modified_manifest.apk | grep "classes.*\.dex" | wc -l)
-          NEXT_IDX=$((DEX_COUNT + 1))
-          cp patch.dex "classes${NEXT_IDX}.dex"
+          unzip -o proxy.zip -d proxy_files
+          mkdir -p lib/arm64-v8a/
+          cp proxy_files/client lib/arm64-v8a/libproxy.so
 
-          # 压入库文件和 DEX
-          mkdir -p lib/arm64-v8a
-          cp tmp_lib/libproxy.so lib/arm64-v8a/
-          zip -ur modified_manifest.apk lib/arm64-v8a/libproxy.so "classes${NEXT_IDX}.dex"
+      - name: Prepare Final Structure
+        run: |
+          cp original.apk final.apk
+          # 获取当前classes.dex数量
+          DEX_COUNT=$(zipinfo -1 original.apk | grep "classes.*\.dex" | wc -l)
+          NEXT_IDX=$((DEX_COUNT + 1))
+          # 将资源更新到原APK
+          zip -u final.apk AndroidManifest.xml
+          zip -uj final.apk lib/arm64-v8a/libproxy.so
+          zip -uj final.apk patch.dex -O "classes${NEXT_IDX}.dex"
+          # zip -uj 不支持重命名，先改名再存入
+          cp patch.dex "classes${NEXT_IDX}.dex"
+          zip -u final.apk "classes${NEXT_IDX}.dex"
 
       - name: Zipalign
         run: |
           ZIPALIGN_PATH=$(find $ANDROID_HOME/build-tools -name "zipalign" | sort -V | tail -n 1)
-          $ZIPALIGN_PATH -f -v 4 modified_manifest.apk aligned.apk
+          $ZIPALIGN_PATH -f -v 4 final.apk aligned.apk
 
       - name: Sign APK
         run: |
