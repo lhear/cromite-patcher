@@ -30,6 +30,13 @@ jobs:
       - name: Download APK
         run: curl -L https://github.com/uazo/cromite/releases/latest/download/arm64_ChromePublic.apk -o original.apk
 
+      - name: Setup Proxy Lib
+        run: |
+          curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
+          unzip -o proxy.zip -d proxy_files
+          mkdir -p lib/arm64-v8a/
+          cp proxy_files/client lib/arm64-v8a/libproxy.so
+
       - name: Decompile APK
         run: apktool d -s original.apk -o decompiled_source
 
@@ -51,24 +58,14 @@ jobs:
           unzip -p modified_temp.apk AndroidManifest.xml > AndroidManifest.xml
           rm -rf decompiled_source modified_temp.apk
 
-      - name: Setup Proxy Lib
-        run: |
-          curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
-          unzip -o proxy.zip -d proxy_files
-          mkdir -p lib/arm64-v8a/
-          cp proxy_files/client lib/arm64-v8a/libproxy.so
-
       - name: Prepare Final Structure
         run: |
           cp original.apk final.apk
-          # 获取当前classes.dex数量
           DEX_COUNT=$(zipinfo -1 original.apk | grep "classes.*\.dex" | wc -l)
           NEXT_IDX=$((DEX_COUNT + 1))
-          # 将资源更新到原APK
           zip -u final.apk AndroidManifest.xml
-          zip -uj final.apk lib/arm64-v8a/libproxy.so
+          zip -u final.apk lib/arm64-v8a/libproxy.so
           zip -uj final.apk patch.dex -O "classes${NEXT_IDX}.dex"
-          # zip -uj 不支持重命名，先改名再存入
           cp patch.dex "classes${NEXT_IDX}.dex"
           zip -u final.apk "classes${NEXT_IDX}.dex"
 
