@@ -17,6 +17,27 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Compile Java Class
+        run: |
+          JAR_PATH="$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          mkdir -p out
+          javac -cp "$JAR_PATH" \
+                -source 1.8 -target 1.8 \
+                -d out \
+                patch/FileProvider.java
+
+      - name: Convert to DEX
+        run: |
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | tail -1)
+          $BUILD_TOOLS_DIR/d8 --release \
+                              --lib "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
+                              --output ./ \
+                              out/patch/FileProvider.class
+          mv ./out_dex/classes.dex ./patch.dex
+
       - name: Install Dependencies
         run: |
           sudo apt-get update
