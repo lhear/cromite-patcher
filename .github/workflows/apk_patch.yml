@@ -56,7 +56,7 @@ jobs:
           cp patch.dex "decompiled_source/classes${NEXT_IDX}.dex"
 
       - name: Rebuild APK
-        run: apktool b decompiled_source -o unsigned.apk
+        run: apktool b -c decompiled_source -o unsigned.apk
 
       - name: Zipalign
         run: |
