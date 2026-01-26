@@ -41,7 +41,7 @@ jobs:
           patch decompiled_source/AndroidManifest.xml AndroidManifest.xml.patch
 
       - name: Rebuild APK
-        run: apktool b decompiled_source -o unsigned.apk
+        run: apktool b -n decompiled_source -o unsigned.apk
 
       - name: Sign APK
         uses: r0adkll/sign-android-release@v1
@@ -52,6 +52,11 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+          extraArguments: >
+            --v1-signing-enabled false 
+            --v2-signing-enabled false 
+            --v3-signing-enabled true 
+            --v4-signing-enabled false
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
 
