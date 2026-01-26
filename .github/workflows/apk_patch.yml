@@ -43,19 +43,27 @@ jobs:
       - name: Rebuild APK
         run: apktool b decompiled_source -o unsigned.apk
 
+      - name: Zipalign
+        run: |
+          ZIPALIGN_PATH=$(find $ANDROID_HOME/build-tools -name "zipalign" | sort -V | tail -n 1)
+          $ZIPALIGN_PATH -f -v 4 unsigned.apk aligned.apk
+          mkdir -p signed_output
+          mv aligned.apk signed_output/
+          rm original.apk unsigned.apk
+
       - name: Sign APK
         uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
-          releaseDirectory: .
+          releaseDirectory: signed_output
           signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
           extraArguments: >
-            --v1-signing-enabled false 
-            --v2-signing-enabled false 
-            --v3-signing-enabled true 
+            --v1-signing-enabled false
+            --v2-signing-enabled false
+            --v3-signing-enabled true
             --v4-signing-enabled false
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
@@ -64,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: patched-apk
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          path: signed_output/*.apk
           
       - name: Upload Manifest
         if: failure()
