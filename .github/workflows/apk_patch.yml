@@ -28,22 +28,17 @@ jobs:
           curl -L https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -o bin/apktool
           curl -L https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.12.1.jar -o bin/apktool.jar
           chmod +x bin/apktool bin/apktool.jar
+          curl -L "https://github.com/lexiforest/curl-impersonate/releases/download/v1.4.1/curl-impersonate-v1.4.1.x86_64-linux-gnu.tar.gz" -o curl.tar.gz
+          tar -zxvf curl.tar.gz -C ./bin
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
       - name: Download APK
         run: |
-          curl -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-          -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,search;q=0.5" \
-          -H "Accept-Language: en-US,en;q=0.5" \
-          -H "Connection: keep-alive" \
-          -H "Upgrade-Insecure-Requests: 1" \
-          --http2 \
-          "https://d.apkpure.com/b/APK/com.microsoft.emmx?version=latest" \
-          -o original.apk
+          curl_chrome142 -L "https://d.apkpure.com/b/APK/com.microsoft.emmx?version=latest" -o original.apk
 
       - name: Download Proxy Lib
         run: |
-          curl -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
+          curl_chrome142 -L https://github.com/lhear/httproxy/releases/latest/download/httproxy-android-arm64.zip -o proxy.zip
           unzip -o proxy.zip -d proxy_files
           mkdir -p lib/arm64-v8a/
           cp proxy_files/client lib/arm64-v8a/libproxy.so
