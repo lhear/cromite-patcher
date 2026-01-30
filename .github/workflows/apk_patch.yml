@@ -38,7 +38,7 @@ jobs:
           -H "Connection: keep-alive" \
           -H "Upgrade-Insecure-Requests: 1" \
           --http2 \
-          "https://github.com/uazo/cromite/releases/latest/download/arm64_ChromePublic.apk" \
+          "https://d.apkpure.com/b/APK/com.microsoft.emmx?version=latest" \
           -o original.apk
 
       - name: Download Proxy Lib
@@ -122,7 +122,7 @@ jobs:
             --v2-signing-enabled false \
             --v3-signing-enabled true \
             --v4-signing-enabled false \
-            --out cromite-arm64.apk aligned.apk
+            --out patched.apk aligned.apk
 
       - name: Create or Update Release
         uses: softprops/action-gh-release@v2
@@ -130,8 +130,8 @@ jobs:
           tag_name: latest
           name: Latest Patched Build
           body: |
-            Automated build of Cromite with Proxy Patch.
-          files: cromite-arm64.apk
+            Automated build of APK with Proxy Patch.
+          files: patched.apk
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
